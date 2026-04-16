@@ -185,6 +185,10 @@ const AddleadsForm = () => {
       setLoading(false);
     }
   };
+  const isEmptyPerson = (person) => {
+    return !person.name && !person.phoneNo && !person.whatsappNo && !person.email && !person.profession;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -231,7 +235,10 @@ const AddleadsForm = () => {
       return;
     }
 
-    const payload = { persons, eventDetails };
+    // Filter out empty person objects
+    const filteredPersons = persons.filter(p => !isEmptyPerson(p));
+
+    const payload = { persons: filteredPersons, eventDetails };
 
     if (!leadFound) {
       if (!referenceForm) {
@@ -242,6 +249,7 @@ const AddleadsForm = () => {
       payload.referenceForm = referenceForm;
     }
 
+    console.log("Add form payload", payload)
     try {
       if (leadFound && leadDetails && showAddQueryForm) {
         if (!leadDetails._id) {

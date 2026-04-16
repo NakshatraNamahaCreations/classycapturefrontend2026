@@ -1,9 +1,19 @@
-
 import React, { useEffect, useState } from "react";
 import { Calendar, dayjsLocalizer } from "react-big-calendar";
 import dayjs from "dayjs";
 import "react-big-calendar/lib/css/react-big-calendar.css";
-import { Container, Card, Table, Tabs, Tab, Form, InputGroup, Button, Spinner, Badge } from "react-bootstrap";
+import {
+  Container,
+  Card,
+  Table,
+  Tabs,
+  Tab,
+  Form,
+  InputGroup,
+  Button,
+  Spinner,
+  Badge,
+} from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import DynamicPagination from "./DynamicPagination";
@@ -18,9 +28,10 @@ const BookingCalendar = () => {
   const [activeTab, setActiveTab] = useState("calendar");
   const [loading, setLoading] = useState({
     calendar: false,
-    bookings: false
+    bookings: false,
   });
   const [error, setError] = useState(null);
+  const [searchType, setSearchType] = useState("bookingId");
 
   // Pagination and search state
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,10 +44,8 @@ const BookingCalendar = () => {
   useEffect(() => {
     const fetchCalendarEvents = async () => {
       try {
-        setLoading(prev => ({ ...prev, calendar: true }));
-        const response = await axios.get(
-          `${API_URL}/quotations/status/Booked`
-        );
+        setLoading((prev) => ({ ...prev, calendar: true }));
+        const response = await axios.get(`${API_URL}/quotations/status/Booked`);
 
         if (response.data.success) {
           const dateCountMap = {};
@@ -52,18 +61,18 @@ const BookingCalendar = () => {
 
           setEvents(
             Object.entries(dateCountMap).map(([date, count]) => ({
-              title: `${count} ${count === 1 ? 'Event' : 'Events'}`,
+              title: `${count} ${count === 1 ? "Event" : "Events"}`,
               start: new Date(date),
               end: new Date(date),
               resource: { date },
-            }))
+            })),
           );
         }
       } catch (err) {
         console.error("Error fetching calendar events:", err);
         setError("Failed to load calendar events. Please try again later.");
       } finally {
-        setLoading(prev => ({ ...prev, calendar: false }));
+        setLoading((prev) => ({ ...prev, calendar: false }));
       }
     };
 
@@ -76,17 +85,15 @@ const BookingCalendar = () => {
   useEffect(() => {
     const fetchAllBookings = async () => {
       try {
-        setLoading(prev => ({ ...prev, bookings: true }));
-        const response = await axios.get(
-          `${API_URL}/quotations/booked-completed`,
-          {
-            params: {
-              page: currentPage,
-              limit: itemsPerPage,
-              search: searchTerm
-            }
-          }
-        );
+        setLoading((prev) => ({ ...prev, bookings: true }));
+        const response = await axios.get(`${API_URL}/quotations/all-bookings`, {
+          params: {
+            page: currentPage,
+            limit: itemsPerPage,
+            searchType,
+            searchValue: searchTerm,
+          },
+        });
 
         if (response.data.success) {
           setAllBookings(response.data.quotations || []);
@@ -96,7 +103,7 @@ const BookingCalendar = () => {
         console.error("Error fetching bookings:", err);
         setError("Failed to load bookings. Please try again later.");
       } finally {
-        setLoading(prev => ({ ...prev, bookings: false }));
+        setLoading((prev) => ({ ...prev, bookings: false }));
       }
     };
 
@@ -113,7 +120,7 @@ const BookingCalendar = () => {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setSearchTerm(searchInput.trim());
-    setCurrentPage(1); // Reset to first page when searching
+    setCurrentPage(1);
   };
 
   const handleClearSearch = () => {
@@ -167,23 +174,50 @@ const BookingCalendar = () => {
             {/* All Bookings Tab */}
             <Tab eventKey="allBookings" title="All Bookings">
               <div className="d-flex justify-content-between mb-3">
-                <Form onSubmit={handleSearchSubmit} style={{ width: "350px" }}>
+                <Form onSubmit={handleSearchSubmit} style={{ width: "520px" }}>
                   <InputGroup>
+                    <Form.Select
+                      value={searchType}
+                      onChange={(e) => {
+                        setSearchType(e.target.value);
+                        setCurrentPage(1);
+                        // optional: clear search when changing type
+                        setSearchInput("");
+                        setSearchTerm("");
+                      }}
+                      disabled={isLoading}
+                      style={{ maxWidth: "180px" }}
+                    >
+                      <option value="bookingId">Booking ID</option>
+                      <option value="venue">Venue</option>
+                      <option value="customerName">Customer Name</option>
+                      <option value="customerPhone">Customer Phone</option>
+                      <option value="personName">Person / Couple Name</option>
+                    </Form.Select>
+
                     <Form.Control
                       type="text"
-                      placeholder="Search by booking ID"
+                      placeholder={
+                        searchType === "bookingId"
+                          ? "Search booking id..."
+                          : searchType === "venue"
+                            ? "Search venue name..."
+                            : searchType === "customerName"
+                              ? "Search customer name..."
+                              : searchType === "customerPhone"
+                                ? "Search customer phone..."
+                                : "Search couple/person name..."
+                      }
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
                       disabled={isLoading}
                     />
-                    <Button
-                      variant="dark"
-                      type="submit"
-                      disabled={isLoading}
-                    >
+
+                    <Button variant="dark" type="submit" disabled={isLoading}>
                       Search
                     </Button>
-                    {searchTerm && (
+
+                    {(searchTerm || searchInput) && (
                       <Button
                         variant="outline-secondary"
                         onClick={handleClearSearch}
@@ -206,7 +240,10 @@ const BookingCalendar = () => {
                 <>
                   <div className="table-responsive">
                     <Table hover className="mb-0">
-                      <thead className="table-light" style={{fontSize:"14px"}}>
+                      <thead
+                        className="table-light"
+                        style={{ fontSize: "14px" }}
+                      >
                         <tr>
                           <th>#</th>
                           <th>Booking ID</th>
@@ -217,42 +254,60 @@ const BookingCalendar = () => {
                           <th>Status</th>
                         </tr>
                       </thead>
-                      <tbody style={{fontSize:"14px"}}>
+                      <tbody style={{ fontSize: "14px" }}>
                         {allBookings.length > 0 ? (
                           allBookings.map((booking, index) => (
                             <tr
                               key={booking._id}
-                              onClick={() => navigate(`/booking/booking-details/${booking._id}`)}
+                              onClick={() =>
+                                navigate(
+                                  `/booking/booking-details/${booking._id}`,
+                                )
+                              }
                               style={{ cursor: "pointer" }}
                             >
-                              <td>{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                              <td>{booking.quotationId || 'N/A'}</td>
+                              <td>
+                                {(currentPage - 1) * itemsPerPage + index + 1}
+                              </td>
+                              <td>{booking.quotationId || "N/A"}</td>
                               <td>
                                 {booking.packages?.map((pkg, i) => (
                                   <div key={i}>
-                                    {pkg.categoryName || 'N/A'} - {pkg.eventStartDate ? dayjs(pkg.eventStartDate).format("DD/MM/YY") : 'N/A'}
+                                    {pkg.categoryName || "N/A"} -{" "}
+                                    {pkg.eventStartDate
+                                      ? dayjs(pkg.eventStartDate).format(
+                                          "DD/MM/YY",
+                                        )
+                                      : "N/A"}
                                   </div>
-                                )) || 'N/A'}
+                                )) || "N/A"}
                               </td>
                               <td>
                                 {booking.leadId?.persons?.map((p, i) => (
-                                  <div key={i}>{p.name || 'N/A'}</div>
-                                )) || 'N/A'}
+                                  <div key={i}>{p.name || "N/A"}</div>
+                                )) || "N/A"}
                               </td>
                               <td>
                                 {booking.leadId?.persons?.map((p, i) => (
-                                  <div key={i}>{p.phoneNo || 'N/A'}</div>
-                                )) || 'N/A'}
+                                  <div key={i}>{p.phoneNo || "N/A"}</div>
+                                )) || "N/A"}
                               </td>
-                              <td>₹{(booking.totalAmount || 0).toLocaleString()}</td>
                               <td>
-                                <Badge 
+                                ₹{(booking.totalAmount || 0).toLocaleString()}
+                              </td>
+                              <td>
+                                <Badge
                                   bg={
-                                    booking.bookingStatus === 'Booked' ? 'primary' : 
-                                    booking.bookingStatus === 'Completed' ? 'success' : 'secondary'
+                                    booking.bookingStatus === "Booked"
+                                      ? "primary"
+                                      : booking.bookingStatus === "Completed"
+                                        ? "success"
+                                        : booking.bookingStatus === "Cancelled"
+                                          ? "danger"
+                                          : "secondary"
                                   }
                                 >
-                                  {booking.bookingStatus || 'N/A'}
+                                  {booking.bookingStatus || "N/A"}
                                 </Badge>
                               </td>
                             </tr>
@@ -260,7 +315,9 @@ const BookingCalendar = () => {
                         ) : (
                           <tr>
                             <td colSpan="7" className="text-center py-4">
-                              {searchTerm ? "No bookings match your search" : "No bookings found"}
+                              {searchTerm
+                                ? "No bookings match your search"
+                                : "No bookings found"}
                             </td>
                           </tr>
                         )}

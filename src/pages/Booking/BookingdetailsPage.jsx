@@ -40,6 +40,10 @@ import { computeAlbumTotal, fmt } from "../../utils/albumUtils";
 import { BsDatabaseFillAdd, BsDatabaseFillCheck } from "react-icons/bs";
 import { BsCheckCircleFill } from "react-icons/bs";
 import { API_URL } from "../../utils/api";
+import Select from "react-select";
+import AdditionalServicesTable from "../AdditionalServices/AdditionalServicesTable";
+import AddAdditionalServicesModal from "../AdditionalServices/AddAdditionalServicesModal";
+import DispatchRemarkModal from "./DispatchRemarkModal";
 
 const Chip = ({ children, tone = "light" }) => (
   <span className={`chip chip-${tone}`}>{children}</span>
@@ -82,6 +86,12 @@ const BookingdetailsPage = () => {
   const [editingAlbum, setEditingAlbum] = useState(null);
   const [viewAlbum, setViewAlbum] = useState(null);
 
+  // ✅ Additional Services
+  const [showAdditionalModal, setShowAdditionalModal] = useState(false);
+  const [additionalCatalog, setAdditionalCatalog] = useState([]);
+  const [additionalLoading, setAdditionalLoading] = useState(false);
+  const [additionalSelected, setAdditionalSelected] = useState([]); // react-select values
+
   // ✅ Initial state
   const [collectData, setCollectData] = useState({
     personName: "",
@@ -119,7 +129,7 @@ const BookingdetailsPage = () => {
   const [selectedInstallment, setSelectedInstallment] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentData, setPaymentData] = useState({
-    paymentDate: dayjs().format("YYYY-MM-DD"),
+    paymentDate: dayjs().format("DD-MM-YYYY"),
     paymentMode: "Online",
     amount: 0,
     status: "Pending",
@@ -152,8 +162,37 @@ const BookingdetailsPage = () => {
   const [actionType, setActionType] = useState(null); // "note" or "group"
   const [actionValue, setActionValue] = useState("");
 
+  const [showRemark, setShowRemark] = useState(false);
+  const [dispatchRemark, setDispatchRemark] = useState(null);
+  const [dispatchRemarkLoading, setDispatchRemarkLoading] = useState(false);
+
   const { id } = useParams();
   const navigate = useNavigate();
+
+  const isCancelled = quotationData?.bookingStatus === "Cancelled";
+  const isCompleted = quotationData?.bookingStatus === "Completed";
+
+  const markAsCancelled = async () => {
+    try {
+      if (isCancelled) return;
+
+      const ok = window.confirm(
+        "Are you sure you want to cancel this booking? After cancelling, no modifications will be allowed.",
+      );
+      if (!ok) return;
+
+      await axios.put(`${API_URL}/quotations/${id}/booking-status`, {
+        status: "Cancelled",
+        queryId: quotationData?.queryId?.queryId || quotationData?.queryId,
+      });
+
+      toast.success("Booking marked as Cancelled");
+      await fetchQuotation();
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.response?.data?.message || "Failed to cancel booking");
+    }
+  };
 
   useEffect(() => {
     setDiscountDraft(discountValue);
@@ -188,6 +227,23 @@ const BookingdetailsPage = () => {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const fetchDispatchRemark = async () => {
+    try {
+      if (!id) return;
+      setDispatchRemarkLoading(true);
+
+      const res = await axios.get(
+        `${API_URL}/dispatch-remarks/by-quotation/${id}`,
+      );
+
+      setDispatchRemark(res?.data?.data || null);
+    } catch (e) {
+      setDispatchRemark(null);
+    } finally {
+      setDispatchRemarkLoading(false);
+    }
   };
 
   const handleSavePersonDetails = async () => {
@@ -225,6 +281,66 @@ const BookingdetailsPage = () => {
     }
   };
 
+  const getAdditionalId = (s) => s?._id || s?.id;
+
+  // fetch catalog
+  const fetchAdditionalServicesCatalog = async () => {
+    try {
+      setAdditionalLoading(true);
+      const res = await axios.get(`${API_URL}/additional-services`);
+      setAdditionalCatalog(Array.isArray(res?.data?.data) ? res.data.data : []);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load additional services");
+    } finally {
+      setAdditionalLoading(false);
+    }
+  };
+
+  // open modal
+  const openAdditionalModal = async () => {
+    try {
+      // Load catalog if empty
+      if (!additionalCatalog?.length) {
+        await fetchAdditionalServicesCatalog();
+      }
+
+      // pre-select current services from quotation
+      const current = quotationData?.additionalServices || [];
+      const preselected = current.map((s) => ({
+        value: getAdditionalId(s),
+        label: `${s.name} (₹${Number(s.price || 0).toLocaleString()})`,
+        price: Number(s.price) || 0,
+        raw: s,
+      }));
+      setAdditionalSelected(preselected);
+
+      setShowAdditionalModal(true);
+    } catch (err) {
+      console.error(err);
+      toast.error("Unable to open modal");
+    }
+  };
+
+  // compute subtotal from quotationData
+  const additionalServiceSubtotal = useMemo(() => {
+    return Math.round(
+      (quotationData?.additionalServices || []).reduce(
+        (sum, s) => sum + (Number(s.price) || 0),
+        0,
+      ),
+    );
+  }, [quotationData?.additionalServices]);
+
+  const additionalOptions = useMemo(() => {
+    return (additionalCatalog || []).map((s) => ({
+      value: s._id,
+      label: `${s.name} (₹${Number(s.price || 0).toLocaleString()})`,
+      price: Number(s.price) || 0,
+      raw: s,
+    }));
+  }, [additionalCatalog]);
+
   const handleAddInstruction = async () => {
     if (!newInstruction.trim()) return;
     try {
@@ -261,6 +377,62 @@ const BookingdetailsPage = () => {
     }
   };
 
+  const handleRemoveAdditionalService = async (service) => {
+    try {
+      const serviceId = String(service?.serviceId || "");
+      if (!serviceId) return toast.error("Invalid additional service id");
+
+      const ok = window.confirm(`Remove "${service?.name}"?`);
+      if (!ok) return;
+
+      // ✅ delete only that serviceId entry
+      const res = await axios.delete(
+        `${API_URL}/quotations/${id}/additional-services/${serviceId}`,
+      );
+
+      const nextQuotation = res?.data?.quotation || null;
+      const nextAdditional = nextQuotation?.additionalServices || [];
+
+      if (nextQuotation) setQuotationData(nextQuotation);
+      else {
+        setQuotationData((p) => ({
+          ...p,
+          additionalServices: (p?.additionalServices || []).filter(
+            (x) => String(x?.serviceId) !== serviceId,
+          ),
+        }));
+      }
+
+      const totals = buildMinimalTotals(
+        null,
+        null,
+        discountValue,
+        nextAdditional,
+      );
+
+      await axios.put(`${API_URL}/quotations/${id}/totals-min`, {
+        package: null,
+        totalPackageAmt: totals.totalPackageAmt,
+        totalAlbumAmount: totals.totalAlbumAmount,
+        totalAdditionalServiceAmount: totals.totalAdditionalServiceAmount,
+        discountValue: totals.discountValue,
+        gstValue: totals.gstValue,
+        totalAmount: totals.totalAmount,
+        grandTotal: totals.totalAmount,
+        totalMarginFinal: totals.totalMarginFinal,
+        installments: totals.installments,
+      });
+
+      toast.success("Additional service removed");
+      await fetchQuotation();
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        err?.response?.data?.message || "Failed to remove additional service",
+      );
+    }
+  };
+
   useEffect(() => {
     const fetchCollectedData = async () => {
       try {
@@ -282,6 +454,7 @@ const BookingdetailsPage = () => {
       setAlbums(q.albums || []);
       setDiscountValue(Number(q.discountValue || 0)); // set discountValue
       console.log("res.data.q", q);
+      fetchDispatchRemark();
     } catch (err) {
       toast.error("Error loading quotation");
     } finally {
@@ -290,7 +463,9 @@ const BookingdetailsPage = () => {
   };
 
   useEffect(() => {
-    if (id) fetchQuotation();
+    if (id) {
+      fetchQuotation();
+    }
   }, [id]);
 
   // Package subtotal (generic helper) — keep if not already present
@@ -337,7 +512,8 @@ const BookingdetailsPage = () => {
     [albums],
   );
 
-  const totalBeforeDiscount = packageSubtotal + albumSubtotal;
+  const totalBeforeDiscount =
+    packageSubtotal + albumSubtotal + additionalServiceSubtotal;
   const totalAfterDiscount = totalBeforeDiscount - (Number(discountValue) || 0);
   const gst = quotationData?.gstApplied
     ? Math.round(totalAfterDiscount * 0.18)
@@ -375,6 +551,7 @@ const BookingdetailsPage = () => {
       package: null,
       totalPackageAmt: totals.totalPackageAmt,
       totalAlbumAmount: totals.totalAlbumAmount,
+      totalAdditionalServiceAmount: totals.totalAdditionalServiceAmount,
       discountValue: totals.discountValue, // ✅ use computed
       gstValue: totals.gstValue,
       totalAmount: totals.totalAmount,
@@ -403,24 +580,32 @@ const BookingdetailsPage = () => {
       (albumsArr || []).reduce((sum, a) => sum + computeAlbumTotal(a), 0),
     );
 
+  const computeAdditionalSubtotalNow = (arr = []) =>
+    Math.round((arr || []).reduce((sum, s) => sum + (Number(s.price) || 0), 0));
+
   const buildMinimalTotals = (
     albumsOverride = null,
     packagesOverride = null,
-    discountOverride = null, // ✅ allow override
+    discountOverride = null,
+    additionalOverride = null, // ✅ NEW
   ) => {
     const albumsArr = Array.isArray(albumsOverride) ? albumsOverride : albums;
     const packagesArr = Array.isArray(packagesOverride)
       ? packagesOverride
       : quotationData?.packages || [];
 
+    const additionalArr = Array.isArray(additionalOverride)
+      ? additionalOverride
+      : quotationData?.additionalServices || [];
+
     const albumSubtotalNow = computeAlbumSubtotalNow(albumsArr);
     const packageSubtotalNow = computePackageSubtotalNow(packagesArr);
+    const additionalSubtotalNow = computeAdditionalSubtotalNow(additionalArr);
 
     const totalBeforeDiscountNow = Math.round(
-      packageSubtotalNow + albumSubtotalNow,
+      packageSubtotalNow + albumSubtotalNow + additionalSubtotalNow,
     );
 
-    // ✅ Use override if provided, else current discountValue
     const discountValueNow =
       discountOverride !== null
         ? Number(discountOverride)
@@ -437,18 +622,13 @@ const BookingdetailsPage = () => {
 
     const grandTotalNow = Math.round(totalAfterDiscountNow + gstNow);
 
-    // --- Installments recalculation ---
     const calculatedInstallments = (installments || []).map((inst) => {
       const newAmount = Math.round(
         (inst.paymentPercentage / 100) * grandTotalNow,
       );
-      return {
-        ...inst,
-        paymentAmount: newAmount,
-      };
+      return { ...inst, paymentAmount: newAmount };
     });
 
-    // Redistribute existing payments intelligently
     let remainingPayment = 0;
     const finalInstallments = calculatedInstallments.map((inst) => {
       const previouslyPaid = inst.paidAmount || 0;
@@ -460,13 +640,9 @@ const BookingdetailsPage = () => {
       remainingPayment = previouslyPaid + remainingPayment - newPaidAmount;
 
       let status = inst.status;
-      if (newPaidAmount >= inst.paymentAmount) {
-        status = "Completed";
-      } else if (newPaidAmount > 0) {
-        status = "Partial Paid";
-      } else {
-        status = "Pending";
-      }
+      if (newPaidAmount >= inst.paymentAmount) status = "Completed";
+      else if (newPaidAmount > 0) status = "Partial Paid";
+      else status = "Pending";
 
       return {
         ...inst,
@@ -483,12 +659,11 @@ const BookingdetailsPage = () => {
       last.status = "Completed";
     }
 
-    // --- Margin calculations (discount as value, not percent) ---
+    // ✅ Margin (keep your old logic, but include additional subtotal same as albums if needed)
     const totalMarginBeforeDiscountNow = Math.round(
-      packageMarginSubtotal + albumSubtotalNow,
+      packageMarginSubtotal + albumSubtotalNow + additionalSubtotalNow,
     );
 
-    // Defensive: avoid division by zero
     const marginDiscountNow = discountValueNow;
 
     const marginAfterDiscountNow = Math.max(
@@ -507,6 +682,10 @@ const BookingdetailsPage = () => {
     return {
       totalPackageAmt: packageSubtotalNow,
       totalAlbumAmount: albumSubtotalNow,
+
+      // ✅ NEW
+      totalAdditionalServiceAmount: additionalSubtotalNow,
+
       discountValue: discountValueNow,
       gstValue: gstNow,
       totalAmount: grandTotalNow,
@@ -544,6 +723,7 @@ const BookingdetailsPage = () => {
           : null,
       totalPackageAmt: totals.totalPackageAmt,
       totalAlbumAmount: totals.totalAlbumAmount,
+      totalAdditionalServiceAmount: totals.totalAdditionalServiceAmount,
       discountValue: totals.discountValue,
       gstValue: totals.gstValue,
       totalAmount: totals.totalAmount,
@@ -563,6 +743,77 @@ const BookingdetailsPage = () => {
       setQuotationData(res.data.quotation);
     } else {
       await fetchQuotation();
+    }
+  };
+
+  const handleAdditionalServicesAdd = async () => {
+    try {
+      if (!id) return;
+
+      const additionalServiceIds = (additionalSelected || []).map(
+        (x) => x.value,
+      );
+
+      // ✅ 1) update quotation additional services (new backend route)
+      const res = await axios.put(
+        `${API_URL}/quotations/${id}/additional-services`,
+        { additionalServiceIds },
+      );
+
+      // Use server quotation if returned, else fallback
+      const nextQuotation = res?.data?.quotation || null;
+      const nextAdditional = nextQuotation?.additionalServices
+        ? nextQuotation.additionalServices
+        : (additionalSelected || []).map((x) => ({
+            _id: x.value,
+            name: x.raw?.name || x.label,
+            price: x.price || 0,
+            description: x.raw?.description || "",
+          }));
+
+      // ✅ update UI quickly
+      if (nextQuotation) {
+        setQuotationData(nextQuotation);
+      } else {
+        setQuotationData((prev) => ({
+          ...prev,
+          additionalServices: nextAdditional,
+        }));
+      }
+
+      // ✅ 2) recalc totals and update totals-min (same style as albums)
+      const totals = buildMinimalTotals(
+        null,
+        null,
+        discountValue,
+        nextAdditional,
+      );
+
+      const payload = {
+        package: null,
+        totalPackageAmt: totals.totalPackageAmt,
+        totalAlbumAmount: totals.totalAlbumAmount,
+        totalAdditionalServiceAmount: totals.totalAdditionalServiceAmount,
+        discountValue: totals.discountValue,
+        gstValue: totals.gstValue,
+        totalAmount: totals.totalAmount,
+        grandTotal: totals.totalAmount,
+        totalMarginFinal: totals.totalMarginFinal,
+        installments: totals.installments,
+      };
+
+      await axios.put(`${API_URL}/quotations/${id}/totals-min`, payload);
+
+      toast.success("Additional services updated");
+      setShowAdditionalModal(false);
+
+      // ✅ final refresh for safety
+      await fetchQuotation();
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        err?.response?.data?.message || "Failed to update additional services",
+      );
     }
   };
 
@@ -1113,24 +1364,29 @@ const BookingdetailsPage = () => {
       toast.error("Please select a status.");
       return;
     }
-    if (Number(paymentData.amount) > Number(paymentData.maxAmount)) {
-      toast.error("Amount cannot exceed installment amount.");
-      return;
-    }
+    // if (Number(paymentData.amount) > Number(paymentData.maxAmount)) {
+    //   toast.error("Amount cannot exceed installment amount.");
+    //   return;
+    // }
     if (Number(paymentData.amount) <= 0) {
       toast.error("Amount must be greater than zero.");
       return;
     }
 
     setIsSubmitting(true);
+
     try {
+      const dueDateDDMMYYYY = paymentData.paymentDate
+        ? dayjs(paymentData.paymentDate, "YYYY-MM-DD").format("DD-MM-YYYY")
+        : "";
       const payload = {
-        paymentAmount: selectedInstallment.paymentAmount, // total installment amount
-        paidAmount: paymentData.amount, // amount being paid now
+        paymentAmount: selectedInstallment.paymentAmount,
+        paidAmount: paymentData.amount,
         paymentMode: paymentData.paymentMode,
-        paymentDate: paymentData.paymentDate,
+        dueDate: dueDateDDMMYYYY, // ✅ FIXED
         status: paymentData.status,
         accountHolders: [{ name }],
+        paidTo: newHolder.name,
       };
       const res = await axios.put(
         `${API_URL}/quotations/${id}/installment/${selectedInstallment._id}`,
@@ -1158,33 +1414,100 @@ const BookingdetailsPage = () => {
       <Card className="mb-4 shadow-sm border-0">
         <div className="d-flex justify-content-between align-items-center border-bottom px-3 py-2">
           <h6 className="fw-bold mb-0">Customer Details</h6>
-          <div>
-            {/* WhatsApp Group Button */}
-            <Button
-              variant="success"
-              size="sm"
-              className="me-2"
-              onClick={() => {
-                setActionType("group");
-                setActionValue(quotationData?.whatsappGroupName || "");
-                setShowActionModal(true);
-              }}
-            >
-              <FaWhatsapp /> Add Group
-            </Button>
+          <div className="d-flex align-items-center gap-2">
+            {/* ✅ Status badge */}
+            {isCancelled ? (
+              <span
+                className="badge"
+                style={{
+                  background: "#ffe5e7",
+                  color: "#b02a37",
+                  border: "1px solid #f5c2c7",
+                  fontSize: "12px",
+                  padding: "8px 12px",
+                  borderRadius: "999px",
+                  fontWeight: 800,
+                  letterSpacing: "0.2px",
+                  boxShadow: "0 2px 8px rgba(176,42,55,0.12)",
+                }}
+              >
+                Booking Status: CANCELLED
+              </span>
+            ) : (
+              <span
+                className="badge"
+                style={{
+                  background: "#e7f1ff",
+                  color: "#0b5ed7",
+                  border: "1px solid #cfe2ff",
+                  fontSize: "12px",
+                  padding: "8px 12px",
+                  borderRadius: "999px",
+                  fontWeight: 800,
+                  letterSpacing: "0.2px",
+                }}
+              >
+                Booking Status: {quotationData?.bookingStatus || "Not Booked"}
+              </span>
+            )}
 
+            {/* ✅ Mark as Cancel button (only when not cancelled) */}
+            {!isCancelled && !isCompleted && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={markAsCancelled}
+                style={{ fontSize: "12px", fontWeight: 700 }}
+              >
+                Mark as Cancel
+              </Button>
+            )}
+            {!isCancelled && isCompleted && !dispatchRemark &&  (
+              <Button
+                variant="success"
+                size="sm"
+                onClick={() => setShowRemark(true)}
+                style={{ fontSize: "12px", fontWeight: 700 }}
+              >
+                Add Dispatch Remarks
+              </Button>
+            )}
+
+            {/* WhatsApp Group Button */}
+            {!isCancelled && !isCompleted && (
+              <Button
+                variant="success"
+                size="sm"
+                className="me-2"
+                disabled={isCancelled}
+                onClick={() => {
+                  if (isCancelled)
+                    return toast.error("Booking is Cancelled. View-only.");
+                  setActionType("group");
+                  setActionValue(quotationData?.whatsappGroupName || "");
+                  setShowActionModal(true);
+                }}
+              >
+                <FaWhatsapp /> Add Group
+              </Button>
+            )}
             {/* Note Button */}
-            <Button
-              variant="dark"
-              size="sm"
-              onClick={() => {
-                setActionType("note");
-                setActionValue(quotationData?.quoteNote || "");
-                setShowActionModal(true);
-              }}
-            >
-              <FaStickyNote /> Add Note
-            </Button>
+            {!isCancelled && !isCompleted && (
+              <Button
+                variant="dark"
+                size="sm"
+                disabled={isCancelled}
+                onClick={() => {
+                  if (isCancelled)
+                    return toast.error("Booking is Cancelled. View-only.");
+                  setActionType("note");
+                  setActionValue(quotationData?.quoteNote || "");
+                  setShowActionModal(true);
+                }}
+              >
+                <FaStickyNote /> Add Note
+              </Button>
+            )}
           </div>
         </div>
         {isLoading ? (
@@ -1237,16 +1560,17 @@ const BookingdetailsPage = () => {
                   <div className="col-md-6" key={person._id}>
                     <div className="d-flex align-items-center px-2 py-2 bg-white rounded shadow-sm border position-relative">
                       {/* Edit Button */}
-                      <Button
-                        variant="none"
-                        size="sm"
-                        className="position-absolute"
-                        style={{ top: "8px", right: "8px" }}
-                        onClick={() => handleEditPerson(person)}
-                      >
-                        <FaEdit size={12} />
-                      </Button>
-
+                      {!isCancelled && (
+                        <Button
+                          variant="none"
+                          size="sm"
+                          className="position-absolute"
+                          style={{ top: "8px", right: "8px" }}
+                          onClick={() => handleEditPerson(person)}
+                        >
+                          <FaEdit size={12} />
+                        </Button>
+                      )}
                       <div
                         className="rounded-circle d-flex align-items-center justify-content-center me-3"
                         style={{
@@ -1286,6 +1610,50 @@ const BookingdetailsPage = () => {
             </div>
           </div>
         )}
+
+   {/* ✅ Dispatch Remark Display (Highlighted) */}
+{dispatchRemarkLoading ? (
+  <div className="mt-2 text-muted" style={{ fontSize: 12 }}>
+    Loading dispatch remarks...
+  </div>
+) : dispatchRemark?.dispatchText ? (
+  <div className="dispatch-remark-card mt-3">
+    <div className="dispatch-remark-top">
+      <div className="dispatch-remark-title">
+        <span className="dispatch-remark-icon">🚚</span>
+        <div>
+          <div className="dispatch-remark-heading">
+            Dispatch Remark <span className="dispatch-remark-badge">IMPORTANT</span>
+          </div>
+          {/* <div className="dispatch-remark-sub">
+            Please verify dispatch details before closing the booking.
+          </div> */}
+        </div>
+      </div>
+
+      {isCompleted && (
+        <Button
+          size="sm"
+          variant="outline-primary"
+          className="dispatch-remark-edit"
+          onClick={() => setShowRemark(true)}
+        >
+          <FaEdit className="me-1" />
+          Edit
+        </Button>
+      )}
+    </div>
+
+    <div className="dispatch-remark-text">{dispatchRemark.dispatchText}</div>
+
+    {dispatchRemark?.createdAt && (
+      <div className="dispatch-remark-time">
+        Added on: {dayjs(dispatchRemark.createdAt).format("DD-MM-YYYY hh:mm A")}
+      </div>
+    )}
+  </div>
+) : null}
+
       </Card>
 
       {/* Person Edit Modal */}
@@ -1413,23 +1781,25 @@ const BookingdetailsPage = () => {
             </ul>
 
             {/* Add Instruction Input */}
-            <div className="d-flex gap-2 mt-2">
-              <Form.Control
-                type="text"
-                size="sm"
-                placeholder="Write instruction..."
-                value={newInstruction}
-                onChange={(e) => setNewInstruction(e.target.value)}
-              />
-              <Button
-                variant="dark"
-                size="sm"
-                onClick={handleAddInstruction}
-                className="d-flex align-items-center"
-              >
-                <FaPlus /> Add
-              </Button>
-            </div>
+            {!isCancelled && !isCompleted && (
+              <div className="d-flex gap-2 mt-2">
+                <Form.Control
+                  type="text"
+                  size="sm"
+                  placeholder="Write instruction..."
+                  value={newInstruction}
+                  onChange={(e) => setNewInstruction(e.target.value)}
+                />
+                <Button
+                  variant="dark"
+                  size="sm"
+                  onClick={handleAddInstruction}
+                  className="d-flex align-items-center"
+                >
+                  <FaPlus /> Add
+                </Button>
+              </div>
+            )}
           </div>
         </Card.Body>
 
@@ -1451,7 +1821,9 @@ const BookingdetailsPage = () => {
               <th style={{ width: "15%" }}>Vendor</th>
               <th style={{ width: "15%" }}>Assistant</th>
               <th style={{ width: "10%", textAlign: "right" }}>Salary</th>
-              <th style={{ width: "10%", textAlign: "right" }}>Actions</th>
+              {!isCancelled && !isCompleted && (
+                <th style={{ width: "10%", textAlign: "right" }}>Actions</th>
+              )}
             </tr>
           </thead>
 
@@ -1519,61 +1891,65 @@ const BookingdetailsPage = () => {
                       : "—"}
                   </td>
 
-                  <td className="text-nowrap" style={{ textAlign: "right" }}>
-                    <OverlayTrigger
-                      placement="top"
-                      overlay={
-                        <Tooltip id="tt-assign">Assign / Change Vendor</Tooltip>
-                      }
-                    >
-                      <Button
-                        variant="light"
-                        size="sm"
-                        className="btn-icon"
-                        onClick={() => handleAssignVendor(r.pkg._id)}
+                  {!isCancelled && !isCompleted && (
+                    <td className="text-nowrap" style={{ textAlign: "right" }}>
+                      <OverlayTrigger
+                        placement="top"
+                        overlay={
+                          <Tooltip id="tt-assign">
+                            Assign / Change Vendor
+                          </Tooltip>
+                        }
                       >
-                        <FaExchangeAlt style={{ fontSize: "12px" }} />
-                      </Button>
-                    </OverlayTrigger>
+                        <Button
+                          variant="light"
+                          size="sm"
+                          className="btn-icon"
+                          onClick={() => handleAssignVendor(r.pkg._id)}
+                        >
+                          <FaExchangeAlt style={{ fontSize: "12px" }} />
+                        </Button>
+                      </OverlayTrigger>
 
-                    <OverlayTrigger
-                      placement="top"
-                      overlay={
-                        <Tooltip id="tt-collect">
+                      <OverlayTrigger
+                        placement="top"
+                        overlay={
+                          <Tooltip id="tt-collect">
+                            {findCollectedForServiceUnit(
+                              r.pkg._id,
+                              r.service._id,
+                              r.unitIndex,
+                            )
+                              ? "Edit Collected data"
+                              : "Collect Data"}
+                          </Tooltip>
+                        }
+                      >
+                        <Button
+                          variant="light"
+                          size="sm"
+                          className="ms-1 btn-icon"
+                          onClick={() =>
+                            handleOpenCollectForUnit(
+                              r.pkg,
+                              r.service,
+                              r.unitIndex,
+                            )
+                          }
+                        >
                           {findCollectedForServiceUnit(
                             r.pkg._id,
                             r.service._id,
                             r.unitIndex,
-                          )
-                            ? "Edit Collected data"
-                            : "Collect Data"}
-                        </Tooltip>
-                      }
-                    >
-                      <Button
-                        variant="light"
-                        size="sm"
-                        className="ms-1 btn-icon"
-                        onClick={() =>
-                          handleOpenCollectForUnit(
-                            r.pkg,
-                            r.service,
-                            r.unitIndex,
-                          )
-                        }
-                      >
-                        {findCollectedForServiceUnit(
-                          r.pkg._id,
-                          r.service._id,
-                          r.unitIndex,
-                        ) ? (
-                          <BsCheckCircleFill style={{ fontSize: "16px" }} />
-                        ) : (
-                          <BsDatabaseFillAdd style={{ fontSize: "16px" }} />
-                        )}
-                      </Button>
-                    </OverlayTrigger>
-                  </td>
+                          ) ? (
+                            <BsCheckCircleFill style={{ fontSize: "16px" }} />
+                          ) : (
+                            <BsDatabaseFillAdd style={{ fontSize: "16px" }} />
+                          )}
+                        </Button>
+                      </OverlayTrigger>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -2025,11 +2401,6 @@ const BookingdetailsPage = () => {
         <div className="mb-4">
           <div className="d-flex justify-content-between align-items-center my-2">
             <h5 className="fw-bold mb-3">PACKAGE DETAILS</h5>
-            <div className="d-flex justify-content-between align-items-center">
-              <Button size="sm" variant="dark" onClick={openAlbumModal}>
-                + Add Album
-              </Button>
-            </div>
           </div>
           {quotationData.packages.map((pkg, index) => {
             const packageTotal = pkg.services.reduce(
@@ -2063,15 +2434,17 @@ const BookingdetailsPage = () => {
                       </small>
                     </div>
                   </div>
-                  <div className="d-flex gap-3">
-                    <Button
-                      size="sm"
-                      variant="outline-secondary"
-                      onClick={() => handleOpenPkgQty(pkg, index)}
-                    >
-                      Edit Package
-                    </Button>
-                  </div>
+                  {!isCancelled && !isCompleted && (
+                    <div className="d-flex gap-3">
+                      <Button
+                        size="sm"
+                        variant="outline-secondary"
+                        onClick={() => handleOpenPkgQty(pkg, index)}
+                      >
+                        Edit Package
+                      </Button>
+                    </div>
+                  )}
                 </Card.Header>
                 <Card.Body className="p-0">
                   <Table bordered responsive className="mb-0">
@@ -2119,7 +2492,21 @@ const BookingdetailsPage = () => {
             );
           })}
 
+          {!isCancelled && !isCompleted && (
+            <div className="d-flex justify-content-end align-items-center">
+              <Button
+                size="sm"
+                variant="dark"
+                onClick={openAlbumModal}
+                disabled={isCancelled}
+              >
+                + Add Album
+              </Button>
+            </div>
+          )}
           <AlbumsTable
+            isCancelled={isCancelled}
+            isCompleted={isCompleted}
             albums={albums}
             onQtyDelta={handleAlbumQtyDelta}
             onPriceChange={handleAlbumPriceChange}
@@ -2144,6 +2531,35 @@ const BookingdetailsPage = () => {
             onClose={() => setViewAlbum(null)}
             album={viewAlbum}
           />
+          {!isCancelled && !isCompleted && (
+            <div className="d-flex justify-content-end align-items-center">
+              <Button
+                size="sm"
+                variant="dark"
+                className="mt-2"
+                onClick={openAdditionalModal}
+                disabled={isCancelled}
+              >
+                + Add Additional Services
+              </Button>
+            </div>
+          )}
+          <AdditionalServicesTable
+            isCancelled={isCancelled}
+            isCompleted={isCompleted}
+            items={quotationData?.additionalServices || []}
+            onRemove={handleRemoveAdditionalService}
+          />
+
+          <AddAdditionalServicesModal
+            show={showAdditionalModal}
+            onClose={() => setShowAdditionalModal(false)}
+            loading={additionalLoading}
+            options={additionalOptions}
+            value={additionalSelected}
+            onChange={setAdditionalSelected}
+            onSubmit={handleAdditionalServicesAdd}
+          />
 
           <div className="p-3 border rounded bg-light mt-4">
             <div className="d-flex justify-content-between mb-2">
@@ -2154,6 +2570,11 @@ const BookingdetailsPage = () => {
             <div className="d-flex justify-content-between mb-2">
               <strong>Album Total:</strong>
               <span>₹{albumSubtotal.toLocaleString()} </span>
+            </div>
+
+            <div className="d-flex justify-content-between mb-2">
+              <strong>Additional Services:</strong>
+              <span>₹{additionalServiceSubtotal.toLocaleString()}</span>
             </div>
 
             <div className="d-flex justify-content-between mb-2">
@@ -2171,11 +2592,13 @@ const BookingdetailsPage = () => {
                     style={{ width: 120, textAlign: "right", fontWeight: 600 }}
                     value={discountDraft}
                     onChange={handleDiscountDraftChange}
+                    disabled={isCancelled} // ✅ extra safety
                   />
                   <Button
                     variant="success"
                     size="sm"
                     onClick={handleDiscountSave}
+                    disabled={isCancelled} // ✅ extra safety
                   >
                     <FaSave />
                   </Button>
@@ -2192,14 +2615,18 @@ const BookingdetailsPage = () => {
                   <span style={{ fontWeight: 600 }}>
                     - ₹{Number(discountValue).toLocaleString()}
                   </span>
-                  <Button
-                    variant="outline-secondary"
-                    size="sm"
-                    onClick={handleDiscountEditClick}
-                    style={{ padding: "2px 6px" }}
-                  >
-                    <FaEdit />
-                  </Button>
+
+                  {/* ✅ Show edit button ONLY when booking is NOT cancelled */}
+                  {!isCancelled && !isCompleted && (
+                    <Button
+                      variant="outline-secondary"
+                      size="sm"
+                      onClick={handleDiscountEditClick}
+                      style={{ padding: "2px 6px" }}
+                    >
+                      <FaEdit />
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -2279,14 +2706,16 @@ const BookingdetailsPage = () => {
         <Card className="mb-4 shadow-sm border-0">
           <div className="d-flex justify-content-between align-items-center border-bottom px-3 py-2">
             <h6 className="fw-bold mb-0">Installment Details</h6>
-            <Button
-              variant="outline-dark"
-              size="sm"
-              onClick={handleAddInstallment}
-              disabled={getTotalAllocatedPercentage() >= 100}
-            >
-              <FaPlus className="me-2" /> Add Installment
-            </Button>
+            {!isCancelled && !isCompleted && (
+              <Button
+                variant="outline-dark"
+                size="sm"
+                onClick={handleAddInstallment}
+                disabled={getTotalAllocatedPercentage() >= 100}
+              >
+                <FaPlus className="me-2" /> Add Installment
+              </Button>
+            )}
           </div>
           <div className="table-responsive">
             <Table
@@ -2307,7 +2736,7 @@ const BookingdetailsPage = () => {
                   <th>Mode</th>
                   <th>Status</th>
                   <th>Account Holder</th>
-                  <th>Action</th>
+                  {!isCancelled && !isCompleted && <th>Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -2364,67 +2793,69 @@ const BookingdetailsPage = () => {
                           : "-"}
                       </td>
 
-                      <td>
-                        {/* Edit and Save/Cancel buttons - only shown for Pending status */}
-                        {inst.status === "Pending" &&
-                          (editIndex === index ? (
-                            <>
+                      {!isCancelled && !isCompleted && (
+                        <td>
+                          {/* Edit and Save/Cancel buttons - only shown for Pending status */}
+                          {inst.status === "Pending" &&
+                            (editIndex === index ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="success"
+                                  onClick={() => handleSaveInstallment(index)}
+                                >
+                                  <FaSave />
+                                </Button>{" "}
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => setEditIndex(null)}
+                                >
+                                  <FaTimes />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant=""
+                                onClick={() => handleEditToggle(index)}
+                              >
+                                <FaEdit />
+                              </Button>
+                            ))}
+
+                          {/* Delete button - only shown for Pending status */}
+                          {inst.status === "Pending" && (
+                            <Button
+                              variant=""
+                              size="sm"
+                              onClick={() => handleDeleteInstallment(index)}
+                              className="ms-1"
+                            >
+                              <img
+                                src={deleteIcon}
+                                alt="delete"
+                                width="14"
+                                height="14"
+                              />
+                            </Button>
+                          )}
+
+                          {/* Pay button - shown for Pending or Partial Paid status when there's pending amount */}
+                          {(inst.status === "Pending" ||
+                            inst.status === "Partial Paid") &&
+                            inst.pendingAmount > 0 && (
                               <Button
                                 size="sm"
                                 variant="success"
-                                onClick={() => handleSaveInstallment(index)}
+                                onClick={() => handleOpenPay(inst)}
+                                className="ms-1"
                               >
-                                <FaSave />
-                              </Button>{" "}
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => setEditIndex(null)}
-                              >
-                                <FaTimes />
+                                Pay
                               </Button>
-                            </>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant=""
-                              onClick={() => handleEditToggle(index)}
-                            >
-                              <FaEdit />
-                            </Button>
-                          ))}
-
-                        {/* Delete button - only shown for Pending status */}
-                        {inst.status === "Pending" && (
-                          <Button
-                            variant=""
-                            size="sm"
-                            onClick={() => handleDeleteInstallment(index)}
-                            className="ms-1"
-                          >
-                            <img
-                              src={deleteIcon}
-                              alt="delete"
-                              width="14"
-                              height="14"
-                            />
-                          </Button>
-                        )}
-
-                        {/* Pay button - shown for Pending or Partial Paid status when there's pending amount */}
-                        {(inst.status === "Pending" ||
-                          inst.status === "Partial Paid") &&
-                          inst.pendingAmount > 0 && (
-                            <Button
-                              size="sm"
-                              variant="success"
-                              onClick={() => handleOpenPay(inst)}
-                              className="ms-1"
-                            >
-                              Pay
-                            </Button>
-                          )}
-                      </td>
+                            )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -2837,6 +3268,18 @@ const BookingdetailsPage = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <DispatchRemarkModal
+        show={showRemark}
+        onHide={() => setShowRemark(false)}
+        quotationMongoId={quotationData?._id} // ✅ booking _id
+        quotationUniqueId={quotationData?.quotationId} // ✅ "QN0023"
+        existingRemark={dispatchRemark} // ✅ important for edit
+        onSuccess={(savedDoc) => {
+          setDispatchRemark(savedDoc); // instant UI update
+          fetchDispatchRemark(); // optional refresh
+        }}
+      />
     </div>
   );
 };

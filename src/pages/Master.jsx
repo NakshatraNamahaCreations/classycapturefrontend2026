@@ -2,13 +2,12 @@ import React, { useState } from "react";
 import Services from "./Master/Services";
 import Category from "./Master/Category";
 import PresetQuotation from "./Master/PresetQuotation";
-import Complementary from "./Master/Complementary"
+import Complementary from "./Master/Complementary";
 import Reference from "./Master/Reference";
-
+import AdditionalServices from "./Master/AdditionalServices";
 
 const Master = () => {
   const [activeTab, setActiveTab] = useState("category");
-
 
   const renderContent = () => {
     switch (activeTab) {
@@ -20,13 +19,15 @@ const Master = () => {
       //   return <Complementary />;
       case "addReferenceFrom":
         return <Reference />;
+      case "addAdditionalServices":
+        return <AdditionalServices />;
       default:
         return <Category />;
     }
   };
 
   return (
-    <div className="container py-2 rounded " style={{ background: "#F4F4F4"  }} >
+    <div className="container py-2 rounded " style={{ background: "#F4F4F4" }}>
       <div className="d-flex gap-3 mb-4">
         <button
           className={`btn rounded-1 shadow-sm  w-25 ${activeTab === "category" ? "btn-dark" : "btn-white"}`}
@@ -48,7 +49,7 @@ const Master = () => {
           onClick={() => setActiveTab("presetquote")}
           style={{ fontSize: "12px" }}
         >
-        Preset Quotation
+          Preset Quotation
         </button>
         {/* <button
           className={`btn rounded-1 shadow-sm  w-25 ${activeTab === "addComplementary" ? "btn-dark" : "btn-white"}`}
@@ -62,11 +63,16 @@ const Master = () => {
           onClick={() => setActiveTab("addReferenceFrom")}
           style={{ fontSize: "12px" }}
         >
-        Add Reference
+          Add Reference
         </button>
-       
+        <button
+          className={`btn rounded-1 shadow-sm  w-25 ${activeTab === "addAdditionalServices" ? "btn-dark" : "btn-white"}`}
+          onClick={() => setActiveTab("addAdditionalServices")}
+          style={{ fontSize: "12px" }}
+        >
+          Add Additional Services
+        </button>
       </div>
-
 
       <div>{renderContent()}</div>
     </div>

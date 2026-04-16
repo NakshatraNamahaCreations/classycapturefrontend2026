@@ -11,6 +11,8 @@ const AlbumsTable = ({
   onRemove,
   onView,
   onEdit,
+  isCancelled,
+  isCompleted
 }) => {
   const subtotal = useMemo(
     () => (albums || []).reduce((s, a) => s + computeAlbumTotal(a), 0), // Double safety with (albums || [])
@@ -33,10 +35,10 @@ const AlbumsTable = ({
               <th>Album</th>
               <th>Box</th>
               <th>Sheets</th>
-              <th>Qty</th>
-              <th>Unit Price (album)</th>
-              <th className="text-end">Total</th>
-              <th className="text-end">Actions</th>
+              {/* <th>Qty</th> */}
+              <th>Album Price </th>
+          
+             {!isCancelled && !isCompleted &&  <th className="text-end">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -57,12 +59,10 @@ const AlbumsTable = ({
                   </td>
                   <td>{a.snapshot?.boxLabel || b?.label || "-"}</td>
                   <td>{totalSheets}</td>
-                  <td className="text-nowrap">
-                    <span className="px-2">{a.qty}</span>
-                  </td>
-                  <td style={{ maxWidth: 140 }}>{a.unitPrice}</td>
-                  <td className="text-end fw-semibold">{fmt(total)}</td>
-                  <td className="text-end">
+               
+                  <td >{a.unitPrice}</td>
+         
+                 {!isCancelled && !isCompleted &&  <td className="text-end">
                     <ButtonGroup size="sm">
                       <Button
                         variant="outline-secondary"
@@ -84,7 +84,7 @@ const AlbumsTable = ({
                         <FaTimes />
                       </Button>
                     </ButtonGroup>
-                  </td>
+                  </td>}
                 </tr>
               );
             })}

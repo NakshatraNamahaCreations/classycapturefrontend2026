@@ -192,7 +192,7 @@ const PaymentDetials = () => {
                 <th>Date</th>
                 <th>Mode</th>
                 <th>Status</th>
-                <th>Action</th>
+                {/* <th>Action</th> */}
               </tr>
             </thead>
 
@@ -231,11 +231,11 @@ const PaymentDetials = () => {
                           {inst.status || "Pending"}
                         </span>
                       </td>
-                      <td>
+                      {/* <td>
                         <Button variant="outline-primary" size="sm" onClick={() => handlePaymentClick(inst)}>
                           Pay
                         </Button>
-                      </td>
+                      </td> */}
                     </tr>
                   ))}
 

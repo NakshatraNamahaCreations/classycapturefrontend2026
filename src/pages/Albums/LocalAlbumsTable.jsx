@@ -66,9 +66,9 @@ const LocalAlbumsTable = ({ albums = [], onRemove, onView, onEdit }) => {
               <th>#</th>
               <th>Album</th>
               <th>Box</th>
-              <th>Qty</th>
-              <th>Unit Price (album)</th>
-              <th className="text-end">Total</th>
+              {/* <th>Qty</th> */}
+              <th>Album Price</th>
+          
               <th className="text-end">Actions</th>
             </tr>
           </thead>
@@ -86,11 +86,9 @@ const LocalAlbumsTable = ({ albums = [], onRemove, onView, onEdit }) => {
                     {a.snapshot?.templateLabel || tpl?.label || "-"}
                   </td>
                   <td>{a.snapshot?.boxLabel || box?.label || "-"}</td>
-                  <td className="text-nowrap">
-                    <span className="px-2">{qty}</span>
-                  </td>
-                  <td style={{ maxWidth: 140 }}>{money(a.unitPrice)}</td>
-                  <td className="text-end fw-semibold">{money(total)}</td>
+              
+                  <td >{money(a.unitPrice)}</td>
+          
                   <td className="text-end">
                     <ButtonGroup size="sm">
                       <Button variant="outline-secondary" onClick={() => onView?.(i)}>

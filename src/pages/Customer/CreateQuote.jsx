@@ -163,17 +163,41 @@ const CreateQuote = () => {
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [note, setNote] = useState("");
 
+  // Additional Services
+  const [showAdditionalServicesModal, setShowAdditionalServicesModal] =
+    useState(false);
+  const [additionalServicesList, setAdditionalServicesList] = useState([]);
+  const [selectedAdditionalServices, setSelectedAdditionalServices] = useState(
+    [],
+  );
+  const totalInstallPercentage =
+    installments.length > 0
+      ? installments.reduce((sum, inst) => sum + inst.percentage, 0)
+      : 0;
+
   // Derived flag: a "free" quote (100% discount or computed total is 0)
   const isZeroTotal = React.useMemo(
     () =>
       Math.round(Number(grandTotal || 0)) === 0 ||
       Number(discountValue) >= totalBeforeDiscount,
-    [grandTotal, discountValue, totalBeforeDiscount]
+    [grandTotal, discountValue, totalBeforeDiscount],
   );
+
+  const additionalServicesSubtotal = useMemo(() => {
+    try {
+      return (selectedAdditionalServices || []).reduce(
+        (sum, s) => sum + (Number(s.price) || 0),
+        0,
+      );
+    } catch (e) {
+      console.error(e);
+      return 0;
+    }
+  }, [selectedAdditionalServices]);
 
   const albumSubtotal = useMemo(
     () => albums.reduce((s, a) => s + (computeAlbumTotal(a) || 0), 0),
-    [albums]
+    [albums],
   );
 
   // open/close + callbacks
@@ -198,6 +222,60 @@ const CreateQuote = () => {
     setAlbumDetailsIndex(null);
   };
 
+  const fetchAdditionalServices = async () => {
+    try {
+      const res = await axios.get(
+        `${API_URL}/additional-services?page=1&limit=10000&search=`,
+      );
+      setAdditionalServicesList(res.data.data || []);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to fetch additional services");
+    }
+  };
+
+  const openAdditionalServicesModal = async () => {
+    try {
+      setShowAdditionalServicesModal(true);
+      if (additionalServicesList.length === 0) {
+        await fetchAdditionalServices();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const closeAdditionalServicesModal = () => {
+    try {
+      setShowAdditionalServicesModal(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const removeAdditionalService = (id) => {
+    try {
+      setSelectedAdditionalServices((prev) =>
+        prev.filter((s) => (s._id || s.id) !== id),
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const additionalServiceOptions = useMemo(() => {
+    try {
+      return (additionalServicesList || []).map((s) => ({
+        value: s._id,
+        label: `${s.name} (₹${Number(s.price || 0).toLocaleString()})`,
+        meta: s,
+      }));
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  }, [additionalServicesList]);
+
   const handleAlbumAdd = (albumObj) => setAlbums((p) => [...p, albumObj]);
   const handleAlbumUpdate = (albumObj, idx) =>
     setAlbums((p) => p.map((a, i) => (i === idx ? albumObj : a)));
@@ -212,9 +290,9 @@ const CreateQuote = () => {
       sum +
       pkg.services.reduce(
         (s, srv) => s + (parseFloat(srv.price) || 0) * (parseInt(srv.qty) || 1),
-        0
+        0,
       ),
-    0
+    0,
   );
 
   // Auto-generate installments only when there is a non-zero total
@@ -237,7 +315,7 @@ const CreateQuote = () => {
       insts.map((inst) => ({
         ...inst,
         amount: Math.round((inst.percentage / 100) * grandTotal),
-      }))
+      })),
     );
   }, [grandTotal]);
 
@@ -267,9 +345,9 @@ const CreateQuote = () => {
         pkg.services.reduce(
           (s, srv) =>
             s + (parseFloat(srv.price) || 0) * (parseInt(srv.qty) || 1),
-          0
+          0,
         ),
-      0
+      0,
     );
 
     const packageMargin = packages.reduce(
@@ -278,12 +356,14 @@ const CreateQuote = () => {
         pkg.services.reduce(
           (s, srv) =>
             s + (parseFloat(srv.marginPrice) || 0) * (parseInt(srv.qty) || 1),
-          0
+          0,
         ),
-      0
+      0,
     );
 
-    const beforeDiscount = packageTotal + (albumSubtotal || 0);
+    const beforeDiscount =
+      packageTotal + (albumSubtotal || 0) + (additionalServicesSubtotal || 0);
+
     const discount = Number(discountValue) || 0;
     const afterDiscount = beforeDiscount - discount;
     const gst = isGstApplied ? afterDiscount * 0.18 : 0;
@@ -301,13 +381,19 @@ const CreateQuote = () => {
     setMarginAfterDiscount(Math.round(marginAfterDisc));
     setMarginGstValue(Math.round(marginGst));
     setTotalMarginFinal(Math.round(totalMargin));
-  }, [packages, albumSubtotal, discountValue, isGstApplied]);
+  }, [
+    packages,
+    albumSubtotal,
+    additionalServicesSubtotal,
+    discountValue,
+    isGstApplied,
+  ]);
 
   useEffect(() => {
     const fetchDetails = async () => {
       try {
         const res = await axios.get(
-          `${API_URL}/lead/lead-query-details/${leadId}/${queryId}`
+          `${API_URL}/lead/lead-query-details/${leadId}/${queryId}`,
         );
         setLeadDetails(res.data.lead || null);
       } catch (err) {
@@ -318,9 +404,7 @@ const CreateQuote = () => {
     };
     const fetchCategories = async () => {
       try {
-        const resCategories = await axios.get(
-          `${API_URL}/category/all`
-        );
+        const resCategories = await axios.get(`${API_URL}/category/all`);
         setCategoriesList(resCategories.data.data || []);
       } catch {
         toast.error("Failed to fetch categories");
@@ -329,9 +413,7 @@ const CreateQuote = () => {
 
     const fetchServices = async () => {
       try {
-        const resServices = await axios.get(
-          `${API_URL}/service/all`
-        );
+        const resServices = await axios.get(`${API_URL}/service/all`);
         const data = (resServices.data.data || []).map((service, idx) => ({
           ...service,
           id: service._id,
@@ -352,9 +434,7 @@ const CreateQuote = () => {
   useEffect(() => {
     const fetchPresetQuotations = async () => {
       try {
-        const res = await axios.get(
-          `${API_URL}/preset-quotation`
-        );
+        const res = await axios.get(`${API_URL}/preset-quotation`);
         setPresetData(res.data.data || []);
       } catch (err) {
         console.error("Failed to fetch preset quotations", err);
@@ -373,9 +453,7 @@ const CreateQuote = () => {
     if (!queryId) return;
     try {
       setNoQuotationsFound(false);
-      const res = await axios.get(
-        `${API_URL}/quotations/by-query/${queryId}`
-      );
+      const res = await axios.get(`${API_URL}/quotations/by-query/${queryId}`);
       if (
         res.data.success === false &&
         res.data.message &&
@@ -395,7 +473,7 @@ const CreateQuote = () => {
         setCurrentQuotationId(selectQuotationId);
         // Auto-load the quotation data into the form for editing
         const selectedQuotation = res.data.quotations.find(
-          (q) => q._id === selectQuotationId
+          (q) => q._id === selectQuotationId,
         );
         if (selectedQuotation) {
           setPackages(
@@ -406,7 +484,7 @@ const CreateQuote = () => {
                 ? pkg.packageType.toLowerCase()
                 : pkg.type || "custom",
               id: pkg._id || pkg.id || uuidv4(),
-            }))
+            })),
           );
           // Ensure each installment has an 'amount' field set to paymentAmount
           setInstallments(
@@ -419,7 +497,7 @@ const CreateQuote = () => {
                   ? inst.paymentPercentage
                   : 0,
               amount: inst.paymentAmount !== undefined ? inst.paymentAmount : 0,
-            }))
+            })),
           );
           setQuoteTitle(selectedQuotation.quoteTitle || "");
           setQuoteDescription(selectedQuotation.quoteDescription || "");
@@ -435,6 +513,9 @@ const CreateQuote = () => {
           // setQuoteTitle(selectedQuotation.quoteTitle || "");
           // setQuoteDescription(selectedQuotation.quoteDescription || "");
           setAlbums(selectedQuotation.albums || []); // <<< hydrate albums
+          setSelectedAdditionalServices(
+            selectedQuotation.additionalServices || [],
+          );
         }
       } else {
         setCurrentQuotationId(null); // Do not select any quotation by default
@@ -459,9 +540,9 @@ const CreateQuote = () => {
       setInstallments([]);
       setQuoteTitle("");
       setQuoteDescription("");
-      setNote(""),
+      (setNote(""),
         // setDiscountPer(0);
-        setIsGstApplied(false);
+        setIsGstApplied(false));
       setGstValue(0);
       setDiscountValue(0);
       setTotalAfterDiscount(0);
@@ -482,7 +563,7 @@ const CreateQuote = () => {
             ? pkg.packageType.toLowerCase()
             : pkg.type || "custom",
           id: pkg._id || pkg.id || uuidv4(),
-        }))
+        })),
       );
       // Ensure each installment has an 'amount' field set to paymentAmount
       setInstallments(
@@ -492,7 +573,7 @@ const CreateQuote = () => {
           percentage:
             inst.paymentPercentage !== undefined ? inst.paymentPercentage : 0,
           amount: inst.paymentAmount !== undefined ? inst.paymentAmount : 0,
-        }))
+        })),
       );
       setCurrentQuotationId(quotation._id);
       setQuoteTitle(quotation.quoteTitle || "");
@@ -501,16 +582,17 @@ const CreateQuote = () => {
       setIsGstApplied(!!quotation.gstApplied);
       setNote(quotation.quoteNote || "");
       setAlbums(quotation.albums || []);
+      setSelectedAdditionalServices(quotation.additionalServices || []);
+
       toast.success(`"${quotation.quoteTitle}" selected`);
     }
   };
 
   const handleFinalizeQuotation = async (id) => {
     try {
-      const res = await axios.patch(
-        `${API_URL}/quotations/${id}/finalize`,
-        { finalized: true }
-      );
+      const res = await axios.patch(`${API_URL}/quotations/${id}/finalize`, {
+        finalized: true,
+      });
       toast.success("Quotation finalized!");
       await fetchQuotations();
       handleLoadQuotation(id); // Select the finalized quotation
@@ -520,10 +602,9 @@ const CreateQuote = () => {
   };
   const handleUnfinalizeQuotation = async (id) => {
     try {
-      const res = await axios.patch(
-        `${API_URL}/quotations/${id}/finalize`,
-        { finalized: false }
-      );
+      const res = await axios.patch(`${API_URL}/quotations/${id}/finalize`, {
+        finalized: false,
+      });
       toast.success("Quotation unfinalized!");
       await fetchQuotations();
       // If the current selected quotation was unfinalized, clear selection
@@ -542,9 +623,7 @@ const CreateQuote = () => {
     if (!window.confirm("Are you sure you want to delete this quotation?"))
       return;
     try {
-      const res = await axios.delete(
-        `${API_URL}/quotations/${id}`
-      );
+      const res = await axios.delete(`${API_URL}/quotations/${id}`);
       if (res.data.success) {
         toast.success("Quotation deleted successfully");
         await fetchQuotations();
@@ -577,7 +656,7 @@ const CreateQuote = () => {
   };
   const handleServiceCheck = (id) => {
     setServices(
-      services.map((s) => (s.id === id ? { ...s, checked: !s.checked } : s))
+      services.map((s) => (s.id === id ? { ...s, checked: !s.checked } : s)),
     );
   };
 
@@ -597,9 +676,7 @@ const CreateQuote = () => {
     setPresetVenueAddress("");
     const fetchPresetQuotations = async () => {
       try {
-        const res = await axios.get(
-          `${API_URL}/preset-quotation`
-        );
+        const res = await axios.get(`${API_URL}/preset-quotation`);
         setPresetData(res.data.data || []);
       } catch (err) {
         console.error("Failed to fetch preset quotations", err);
@@ -633,13 +710,13 @@ const CreateQuote = () => {
 
   const handlePresetServicePrice = (id, value) => {
     setPresetServices(
-      presetServices.map((s) => (s.id === id ? { ...s, price: value } : s))
+      presetServices.map((s) => (s.id === id ? { ...s, price: value } : s)),
     );
   };
 
   const handlePresetServiceQty = (id, value) => {
     setPresetServices(
-      presetServices.map((s) => (s.id === id ? { ...s, qty: value } : s))
+      presetServices.map((s) => (s.id === id ? { ...s, qty: value } : s)),
     );
   };
 
@@ -678,7 +755,7 @@ const CreateQuote = () => {
               (ps._id && (ps._id === s.id || ps._id === s._id)) ||
               (ps.serviceId &&
                 (ps.serviceId === s.id || ps.serviceId === s._id)) ||
-              (ps.serviceName && ps.serviceName === s.name)
+              (ps.serviceName && ps.serviceName === s.name),
           );
           return found
             ? {
@@ -689,7 +766,7 @@ const CreateQuote = () => {
                 marginPrice: found.marginPrice,
               }
             : { ...s, checked: false, qty: 1 };
-        })
+        }),
       );
       setCustomCategory(pkg.categoryId === "custom" ? "" : pkg.category);
       setCustomSlot(pkg.slot === "custom" ? "" : pkg.slot);
@@ -709,15 +786,15 @@ const CreateQuote = () => {
               (ps) =>
                 (ps.serviceId && ps.serviceId === s.id) ||
                 (ps.id && ps.id === s.id) ||
-                (ps.serviceName && ps.serviceName === s.name)
-            )
+                (ps.serviceName && ps.serviceName === s.name),
+            ),
           )
           .map((s) => {
             const found = pkg.services.find(
               (ps) =>
                 (ps.serviceId && ps.serviceId === s.id) ||
                 (ps.id && ps.id === s.id) ||
-                (ps.serviceName && ps.serviceName === s.name)
+                (ps.serviceName && ps.serviceName === s.name),
             );
             return found
               ? {
@@ -728,7 +805,7 @@ const CreateQuote = () => {
                   marginPrice: found.marginPrice,
                 }
               : { ...s, checked: false, qty: 1 };
-          })
+          }),
       );
     }
   };
@@ -771,7 +848,9 @@ const CreateQuote = () => {
     if (editingPackageIndex !== null) {
       // Update existing
       setPackages(
-        packages.map((pkg, i) => (i === editingPackageIndex ? newPackage : pkg))
+        packages.map((pkg, i) =>
+          i === editingPackageIndex ? newPackage : pkg,
+        ),
       );
     } else {
       // Add new
@@ -800,7 +879,9 @@ const CreateQuote = () => {
     };
     if (editingPackageIndex !== null) {
       setPackages(
-        packages.map((pkg, i) => (i === editingPackageIndex ? newPackage : pkg))
+        packages.map((pkg, i) =>
+          i === editingPackageIndex ? newPackage : pkg,
+        ),
       );
     } else {
       setPackages([...packages, newPackage]);
@@ -831,7 +912,7 @@ const CreateQuote = () => {
         installments.reduce(
           (sum, inst, idx) =>
             idx !== editingInstallmentIndex ? sum + inst.percentage : sum,
-          0
+          0,
         )
       : 100 - installments.reduce((sum, inst) => sum + inst.percentage, 0);
 
@@ -846,7 +927,7 @@ const CreateQuote = () => {
     }
     if (percentage > availablePercentage) {
       toast.error(
-        `You can only allocate up to ${availablePercentage}% for this installment.`
+        `You can only allocate up to ${availablePercentage}% for this installment.`,
       );
       return;
     }
@@ -861,8 +942,8 @@ const CreateQuote = () => {
                 percentage: percentage,
                 amount: Math.round((percentage / 100) * grandTotal),
               }
-            : inst
-        )
+            : inst,
+        ),
       );
     } else {
       // Add
@@ -889,55 +970,59 @@ const CreateQuote = () => {
       return;
     }
     try {
-      const res = await axios.post(
-        `${API_URL}/quotations/create`,
-        {
-          leadId: leadId,
-          queryId: queryId,
-          quoteTitle,
-          quoteDescription,
-          quoteNote: note,
-          packages: packages.map((pkg) => ({
-            categoryName: pkg.category,
-            packageType: pkg.type === "preset" ? "Preset" : "Custom",
-            eventStartDate: pkg.eventStartDate,
-            eventEndDate: pkg.eventEndDate,
-            slot: pkg.slot,
-            venueName: pkg.venueName,
-            venueAddress: pkg.venueAddress,
-            services: (pkg.services || []).map((s) => ({
-              serviceId: s.id || s.serviceId,
-              serviceName: s.serviceName || s.name,
-              price: Number(s.price),
-              marginPrice: Number(s.marginPrice),
-              qty: Number(s.qty),
-            })),
+      const res = await axios.post(`${API_URL}/quotations/create`, {
+        leadId: leadId,
+        queryId: queryId,
+        quoteTitle,
+        quoteDescription,
+        quoteNote: note,
+        packages: packages.map((pkg) => ({
+          categoryName: pkg.category,
+          packageType: pkg.type === "preset" ? "Preset" : "Custom",
+          eventStartDate: pkg.eventStartDate,
+          eventEndDate: pkg.eventEndDate,
+          slot: pkg.slot,
+          venueName: pkg.venueName,
+          venueAddress: pkg.venueAddress,
+          services: (pkg.services || []).map((s) => ({
+            serviceId: s.id || s.serviceId,
+            serviceName: s.serviceName || s.name,
+            price: Number(s.price),
+            marginPrice: Number(s.marginPrice),
+            qty: Number(s.qty),
           })),
-          installments: isZeroTotal
-            ? [] // do not store installments for zero total / 100% discount
-            : installments.map((inst, idx) => ({
-                installmentNumber: idx + 1,
-                dueDate: inst.dueDate || "",
-                paymentMode: inst.paymentMode || "",
-                paymentAmount: inst.amount,
-                paymentPercentage: inst.percentage,
-              })),
+        })),
+        installments: isZeroTotal
+          ? [] // do not store installments for zero total / 100% discount
+          : installments.map((inst, idx) => ({
+              installmentNumber: idx + 1,
+              dueDate: inst.dueDate || "",
+              paymentMode: inst.paymentMode || "",
+              paymentAmount: inst.amount,
+              paymentPercentage: inst.percentage,
+            })),
+        additionalServices: (selectedAdditionalServices || []).map((s) => ({
+          serviceId: s._id || s.id,
+          name: s.name,
+          price: Number(s.price) || 0,
+          description: s.description || "",
+        })),
+        totalAdditionalServiceAmount: Number(additionalServicesSubtotal || 0),
 
-          totalPackageAmt: totalPackageAmount,
-          totalAmount: grandTotal,
-          discountValue: discountValue,
-          gstApplied: isGstApplied,
-          gstValue,
-          totalAfterDiscount,
-          marginAmount: totalMarginFinal,
-          marginAfterDiscount,
-          marginGstValue,
-          totalMarginFinal,
-          finalized: false,
-          albums, // <--- include albums array
-          totalAlbumAmount: albumSubtotal,
-        }
-      );
+        totalPackageAmt: totalPackageAmount,
+        totalAmount: grandTotal,
+        discountValue: discountValue,
+        gstApplied: isGstApplied,
+        gstValue,
+        totalAfterDiscount,
+        marginAmount: totalMarginFinal,
+        marginAfterDiscount,
+        marginGstValue,
+        totalMarginFinal,
+        finalized: false,
+        albums, // <--- include albums array
+        totalAlbumAmount: albumSubtotal,
+      });
       toast.success("Quotation saved successfully!");
       setShowSaveModal(false);
       setQuoteTitle("");
@@ -1004,6 +1089,13 @@ const CreateQuote = () => {
                 paymentAmount: inst.amount,
                 paymentPercentage: inst.percentage,
               })),
+          additionalServices: (selectedAdditionalServices || []).map((s) => ({
+            serviceId: s._id || s.id,
+            name: s.name,
+            price: Number(s.price) || 0,
+            description: s.description || "",
+          })),
+          totalAdditionalServiceAmount: Number(additionalServicesSubtotal || 0),
 
           totalPackageAmt: totalPackageAmount,
           totalAmount: grandTotal,
@@ -1018,7 +1110,7 @@ const CreateQuote = () => {
           finalized: false,
           albums, // <--- include albums array
           totalAlbumAmount: albumSubtotal,
-        }
+        },
       );
       toast.success("Quotation updated successfully!");
       setShowSaveModal(false);
@@ -1056,14 +1148,14 @@ const CreateQuote = () => {
       Array.isArray(leadDetails.queryDetails.eventDetails)
     ) {
       const match = leadDetails.queryDetails.eventDetails.find(
-        (ev) => ev.category === option.label
+        (ev) => ev.category === option.label,
       );
       if (match) {
         setEventStartDate(
-          match.eventStartDate ? match.eventStartDate.split("T")[0] : ""
+          match.eventStartDate ? match.eventStartDate.split("T")[0] : "",
         );
         setEventEndDate(
-          match.eventEndDate ? match.eventEndDate.split("T")[0] : ""
+          match.eventEndDate ? match.eventEndDate.split("T")[0] : "",
         );
       } else {
         setEventStartDate("");
@@ -1100,7 +1192,7 @@ const CreateQuote = () => {
     // Clone and clean packages, services, installments, albums
     const clonedPackages = cleanIds(deepClone(quotation.packages || []));
     const clonedInstallments = cleanIds(
-      deepClone(quotation.installments || [])
+      deepClone(quotation.installments || []),
     );
     const clonedAlbums = cleanIds(deepClone(quotation.albums || []));
 
@@ -1703,7 +1795,7 @@ const CreateQuote = () => {
                           (sum, s) =>
                             sum +
                             (parseFloat(s.price) || 0) * (parseInt(s.qty) || 1),
-                          0
+                          0,
                         )
                         .toLocaleString()}
                     </td>
@@ -1716,7 +1808,7 @@ const CreateQuote = () => {
                             sum +
                             (parseFloat(s.marginPrice) || 0) *
                               (parseInt(s.qty) || 1),
-                          0
+                          0,
                         )
                         .toLocaleString()}
                     </td>
@@ -1869,7 +1961,7 @@ const CreateQuote = () => {
                           (sum, s) =>
                             sum +
                             (parseFloat(s.price) || 0) * (parseInt(s.qty) || 1),
-                          0
+                          0,
                         )
                         .toLocaleString()}
                     </td>
@@ -1881,7 +1973,7 @@ const CreateQuote = () => {
                             sum +
                             (parseFloat(s.marginPrice) || 0) *
                               (parseInt(s.qty) || 1),
-                          0
+                          0,
                         )
                         .toLocaleString()}
                     </td>
@@ -1943,13 +2035,13 @@ const CreateQuote = () => {
                 const totalPrice = pkg.services.reduce(
                   (sum, s) =>
                     sum + (parseFloat(s.price) || 0) * (parseInt(s.qty) || 1),
-                  0
+                  0,
                 );
                 const totalMargin = pkg.services.reduce(
                   (sum, s) =>
                     sum +
                     (parseFloat(s.marginPrice) || 0) * (parseInt(s.qty) || 1),
-                  0
+                  0,
                 );
 
                 return (
@@ -2119,6 +2211,92 @@ const CreateQuote = () => {
                   onRemove={handleAlbumRemove}
                 />
               </Card>
+              <Card
+                className="p-3 mb-3 border-0 shadow-sm w-100"
+                style={{ background: "#F4F4F4" }}
+              >
+                <div className="d-flex justify-content-between align-items-center">
+                  <h4 style={{ fontSize: "18px", marginBottom: 0 }}>
+                    Additional services
+                  </h4>
+                  <Button
+                    onClick={openAdditionalServicesModal}
+                    variant="transparent"
+                    className="fw-bold rounded-1 shadow bg-white"
+                    style={{ fontSize: "14px" }}
+                  >
+                    + Add Additional Services
+                  </Button>
+                </div>
+                {selectedAdditionalServices.length > 0 && (
+                  <div className="mt-3">
+                    <h6 className="fw-bold mb-2">Additional Services</h6>
+
+                    <Table
+                      bordered
+                      responsive
+                      size="sm"
+                      className="mb-0 bg-white"
+                    >
+                      <thead className="table-light">
+                        <tr>
+                          <th style={{ width: "25%" }}>Service Name</th>
+                          <th style={{ width: "50%" }}>Description</th>
+                          <th style={{ width: "15%" }} className="text-end">
+                            Price
+                          </th>
+                          <th style={{ width: "10%" }} className="text-center">
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedAdditionalServices.map((s) => {
+                          const id = s._id || s.id;
+                          return (
+                            <tr key={id}>
+                              <td className="fw-semibold">{s.name}</td>
+                              <td>{s.description || "—"}</td>
+                              <td className="text-end fw-semibold">
+                                ₹{Number(s.price || 0).toLocaleString()}
+                              </td>
+                              <td className="text-center">
+                                <Button
+                                  variant="link"
+                                  className="text-danger p-0"
+                                  onClick={() => {
+                                    try {
+                                      removeAdditionalService(id);
+                                    } catch (e) {
+                                      console.error(e);
+                                    }
+                                  }}
+                                  title="Remove"
+                                >
+                                  <FaTrash />
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                        <tr className="fw-bold">
+                          <td colSpan={2} className="text-end">
+                            Total
+                          </td>
+                          <td className="text-end">
+                            ₹
+                            {Number(
+                              additionalServicesSubtotal || 0,
+                            ).toLocaleString()}
+                          </td>
+                          <td />
+                        </tr>
+                      </tbody>
+                    </Table>
+                  </div>
+                )}
+              </Card>
 
               <LocalAddAlbumModal
                 show={showAlbumModal}
@@ -2151,6 +2329,13 @@ const CreateQuote = () => {
                   <div className="d-flex justify-content-between">
                     <p className="fw-bold">Total Album Amount</p>
                     <p className="fw-bold">₹{albumSubtotal.toLocaleString()}</p>
+                  </div>
+
+                  <div className="d-flex justify-content-between">
+                    <p className="fw-bold">Total Additional Services Amount</p>
+                    <p className="fw-bold">
+                      ₹{additionalServicesSubtotal.toLocaleString()}
+                    </p>
                   </div>
 
                   <hr />
@@ -2300,7 +2485,7 @@ const CreateQuote = () => {
                 onClick={() => {
                   setEditingInstallmentIndex(null);
                   setNewInstallmentName(
-                    `Installment ${installments.length + 1}`
+                    `Installment ${installments.length + 1}`,
                   );
                   setNewInstallmentPercentage("");
                   setShowInstallmentModal(true);
@@ -2310,7 +2495,7 @@ const CreateQuote = () => {
                   isZeroTotal || // <— add this
                   installments.reduce(
                     (sum, inst) => sum + inst.percentage,
-                    0
+                    0,
                   ) >= 100
                 }
               >
@@ -2382,11 +2567,12 @@ const CreateQuote = () => {
                   <tr className="fw-bold">
                     <td>Total</td>
                     <td>
-                      {installments.reduce(
-                        (sum, inst) => sum + inst.percentage,
-                        0
+                      {totalInstallPercentage}%{" "}
+                      {totalInstallPercentage !== 100 && (
+                        <span className="fw-normal text-danger">
+                          (Need to divide it in 100%){" "}
+                        </span>
                       )}
-                      %
                     </td>
                     <td colSpan="2">
                       ₹
@@ -2466,7 +2652,11 @@ const CreateQuote = () => {
       {/* Add Save Quotation and View Quotation buttons at the bottom */}
       {packages.length > 0 && (
         <div className="d-flex justify-content-end gap-2 mt-4">
-          <Button variant="dark" onClick={() => setShowSaveModal(true)}>
+          <Button
+            variant="dark"
+            onClick={() => setShowSaveModal(true)}
+            disabled={totalInstallPercentage !== 100}
+          >
             {currentQuotationId ? "Update Quotation" : "Save Quotation"}
           </Button>
           {currentQuotationId && (
@@ -2526,6 +2716,7 @@ const CreateQuote = () => {
             onClick={
               currentQuotationId ? handleUpdateQuotation : handleSaveQuotation
             }
+           
           >
             {currentQuotationId ? "Update Quotation" : "Save Quotation"}
           </Button>
@@ -2539,6 +2730,60 @@ const CreateQuote = () => {
         note={note}
         title="Add New Note"
       />
+
+      <Modal
+        show={showAdditionalServicesModal}
+        onHide={closeAdditionalServicesModal}
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Select Additional Services</Modal.Title>
+        </Modal.Header>
+
+        <Modal.Body>
+          <Form.Group>
+            <Form.Label className="fw-semibold">Additional Services</Form.Label>
+
+            <Select
+              isMulti
+              options={additionalServiceOptions}
+              value={(selectedAdditionalServices || []).map((s) => ({
+                value: s._id || s.id,
+                label: `${s.name} (₹${Number(s.price || 0).toLocaleString()})`,
+                meta: s,
+              }))}
+              onChange={(selected) => {
+                try {
+                  const list = (selected || []).map((opt) => ({
+                    _id: opt.meta?._id || opt.value,
+                    name: opt.meta?.name || "",
+                    price: Number(opt.meta?.price || 0),
+                    description: opt.meta?.description || "",
+                  }));
+                  setSelectedAdditionalServices(list);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              placeholder="Select additional services..."
+            />
+          </Form.Group>
+
+          <div className="mt-3 text-muted" style={{ fontSize: "13px" }}>
+            Selected total: ₹
+            {Number(additionalServicesSubtotal || 0).toLocaleString()}
+          </div>
+        </Modal.Body>
+
+        <Modal.Footer>
+          <Button
+            variant="outline-secondary"
+            onClick={closeAdditionalServicesModal}
+          >
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };

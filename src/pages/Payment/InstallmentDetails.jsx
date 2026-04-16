@@ -45,9 +45,7 @@ const InstallmentDetails = () => {
   const fetchQuotation = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_URL}/quotations/${quotationId}`
-      );
+      const res = await fetch(`${API_URL}/quotations/${quotationId}`);
       const data = await res.json();
       if (data?.success) {
         setQuotation(data.quotation);
@@ -68,24 +66,30 @@ const InstallmentDetails = () => {
     fetchQuotation();
   }, [quotationId]);
 
-// ...inside handlePaymentClick...
-const handlePaymentClick = (installment) => {
-  setSelectedInstallment(installment);
+  // ...inside handlePaymentClick...
+  const handlePaymentClick = (installment) => {
+    setSelectedInstallment(installment);
 
-  setPaymentData({
-    paymentDate: installment.dueDate
-      ? dayjs(installment.dueDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).format("YYYY-MM-DD")
-      : dayjs().format("YYYY-MM-DD"),
-    paymentMode: installment.paymentMode || "Online",
-    amount: installment.paymentAmount || 0, // <-- set to installment amount by default
-    status: installment.status || "",
-    maxAmount: installment.paymentAmount || 0,
-  });
+    setPaymentData({
+      paymentDate: installment.dueDate
+        ? dayjs(installment.dueDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).format(
+            "YYYY-MM-DD",
+          )
+        : dayjs().format("YYYY-MM-DD"),
+      paymentMode: installment.paymentMode || "Online",
+      amount: installment.paymentAmount || 0, // <-- set to installment amount by default
+      status: installment.status || "",
+      maxAmount: installment.paymentAmount || 0,
+    });
 
-  setExistingHolders(Array.isArray(installment.accountHolders) ? installment.accountHolders : []);
-  setNewHolder({ name: "" });
-  setShowPaymentModal(true);
-};
+    setExistingHolders(
+      Array.isArray(installment.accountHolders)
+        ? installment.accountHolders
+        : [],
+    );
+    setNewHolder({ name: "" });
+    setShowPaymentModal(true);
+  };
 
   const handlePaymentSubmit = async () => {
     const name = (newHolder.name || "").trim();
@@ -111,17 +115,18 @@ const handlePaymentClick = (installment) => {
     try {
       const payload = {
         dueDate: dayjs(paymentData.paymentDate, "YYYY-MM-DD").format(
-          "DD-MM-YYYY"
+          "DD-MM-YYYY",
         ),
         paymentMode: paymentData.paymentMode,
         paymentAmount: paymentData.amount,
         status: paymentData.status,
         accountHolders: [{ name }],
+        paidTo: newHolder.name,
       };
 
       const res = await axios.put(
         `${API_URL}/quotations/${quotationId}/installments/${selectedInstallment._id}/first-payment`,
-        payload
+        payload,
       );
 
       if (res.data?.success) {
@@ -191,8 +196,8 @@ const handlePaymentClick = (installment) => {
                           inst.status === "Completed"
                             ? "bg-success"
                             : inst.status === "Partial Paid"
-                            ? "bg-warning"
-                            : "bg-secondary"
+                              ? "bg-warning"
+                              : "bg-secondary"
                         }`}
                       >
                         {inst.status || "Pending"}
@@ -223,7 +228,6 @@ const handlePaymentClick = (installment) => {
                 ))
               )}
             </tbody>
-            x
           </Table>
         </div>
 

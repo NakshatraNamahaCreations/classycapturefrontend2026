@@ -6,18 +6,7 @@ import { IoSearch } from "react-icons/io5";
 
 
 const CalenderEvents = () => {
-    const [calenderEvents, setCalenderEvents] = useState([
-        { name: "Rohan", bookingId: "1234567890", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Nishant" },
-        { name: "Ravi", bookingId: "1234567891", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Deepak" },
-        { name: "Nandni", bookingId: "1234567892", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Naveen" },
-        { name: "Navya", bookingId: "1234567893", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Ravi" },
-        { name: "Harsh", bookingId: "1234567894", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Raj" },
-        { name: "Kiara", bookingId: "1234567895", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Raja" },
-        { name: "Kiara", bookingId: "1234567895", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Raja" },
-        { name: "Kiara", bookingId: "1234567895", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Raja" },
-        { name: "Kiara", bookingId: "1234567895", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Raja" },
-        { name: "Kiara", bookingId: "1234567895", eventDetails: { name: "Marriage", venue: "Sri Convention Hall" }, vendor: "Raja" },
-    ]);
+    const [calenderEvents, setCalenderEvents] = useState([]);
 
     return (
         <div className="container py-2 rounded " style={{ background: "#F4F4F4", }} >

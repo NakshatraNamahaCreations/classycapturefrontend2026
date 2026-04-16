@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Table, Form, Button, Card, Container, InputGroup } from "react-bootstrap";
+import {
+  Table,
+  Form,
+  Button,
+  Card,
+  Container,
+  InputGroup,
+} from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "react-hot-toast";
@@ -29,12 +36,13 @@ const QuotationPage = () => {
     setLoading(true);
     try {
       const response = await axios.get(
-        `${API_URL}/quotations/finalized?page=${page}&limit=${itemsPerPage}&search=${encodeURIComponent(searchValue)}`
+        `${API_URL}/quotations/finalized?page=${page}&limit=${itemsPerPage}&search=${encodeURIComponent(searchValue)}`,
       );
       setQuotations(response.data.quotations || []);
       setTotalPages(response.data.totalPages || 1);
     } catch (err) {
-      const errorMessage = err.response?.data?.message || "Failed to fetch finalized quotations";
+      const errorMessage =
+        err.response?.data?.message || "Failed to fetch finalized quotations";
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -55,14 +63,22 @@ const QuotationPage = () => {
   };
 
   const handleViewQuotation = (quotation) => {
-    navigate(`/quote/finalized-quotation/${quotation._id}`, { state: { quotation } });
+    navigate(`/quote/finalized-quotation/${quotation._id}`, {
+      state: { quotation },
+    });
   };
 
   return (
-    <div className="container py-2 rounded vh-100" style={{ background: "#F4F4F4" }}>
+    <div
+      className="container py-2 rounded vh-100"
+      style={{ background: "#F4F4F4" }}
+    >
       <div>
         <div className="d-flex gap-2 align-items-center justify-content-between p-2 rounded">
-          <Form onSubmit={handleSearch} className="d-flex gap-2 align-items-center w-50">
+          <Form
+            onSubmit={handleSearch}
+            className="d-flex gap-2 align-items-center w-50"
+          >
             <InputGroup className="bg-white rounded px-2">
               <IoSearch size={16} className="text-muted mt-1" />
               <Form.Control
@@ -70,30 +86,49 @@ const QuotationPage = () => {
                 placeholder="Search by quotationId or title"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                style={{ border: "none", outline: "none", boxShadow: "none", fontSize: "14px" }}
+                style={{
+                  border: "none",
+                  outline: "none",
+                  boxShadow: "none",
+                  fontSize: "14px",
+                }}
               />
             </InputGroup>
-            <Button variant="dark" size="sm" type="submit" disabled={loading}>Search</Button>
+            <Button variant="dark" size="sm" type="submit" disabled={loading}>
+              Search
+            </Button>
             {search && (
-              <Button variant="outline-secondary" size="sm" onClick={handleClearSearch}>Clear</Button>
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                onClick={handleClearSearch}
+              >
+                Clear
+              </Button>
             )}
           </Form>
-         
         </div>
 
         <Container className="position-relative mt-4">
           <Card className="border-0 p-3">
             {error && <p className="text-danger">{error}</p>}
             {loading && <p>Loading...</p>}
-            <div className="table-responsive bg-white" style={{ maxHeight: "65vh", overflowY: "auto" }}>
+            <div
+              className="table-responsive bg-white"
+              style={{ maxHeight: "65vh", overflowY: "auto" }}
+            >
               <Table className="table table-hover align-middle">
-                <thead className="text-white text-center sticky-top" style={{ backgroundColor: "#343a40" }}>
+                <thead
+                  className="text-white text-center sticky-top"
+                  style={{ backgroundColor: "#343a40" }}
+                >
                   <tr style={{ fontSize: "14px" }}>
                     <th>Sl.No</th>
                     <th>Quotation ID</th>
                     <th>Quote Title</th>
                     <th>Total Amount</th>
                     <th>Created Date</th>
+                    <th>Booking Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -106,12 +141,45 @@ const QuotationPage = () => {
                     </tr>
                   ) : (
                     quotations.map((quote, idx) => (
-                      <tr className="text-center fw-semibold" style={{ fontSize: "12px" }} key={quote._id}>
-                        <td>{String((currentPage - 1) * itemsPerPage + idx + 1).padStart(2, "0")}</td>
+                      <tr
+                        className="text-center fw-semibold"
+                        style={{ fontSize: "12px" }}
+                        key={quote._id}
+                      >
+                        <td>
+                          {String(
+                            (currentPage - 1) * itemsPerPage + idx + 1,
+                          ).padStart(2, "0")}
+                        </td>
                         <td>{quote.quotationId}</td>
                         <td>{quote.quoteTitle || "N/A"}</td>
-                        <td>₹{quote.totalAmount?.toLocaleString("en-IN") || "N/A"}</td>
-                        <td>{quote.createdAt ? new Date(quote.createdAt).toLocaleDateString("en-GB") : "N/A"}</td>
+                        <td>
+                          ₹{quote.totalAmount?.toLocaleString("en-IN") || "N/A"}
+                        </td>
+                        <td>
+                          {quote.createdAt
+                            ? new Date(quote.createdAt).toLocaleDateString(
+                                "en-GB",
+                              )
+                            : "N/A"}
+                        </td>
+                        <td
+                          style={{
+                            fontWeight: 700,
+                            color:
+                              quote.bookingStatus === "Cancelled"
+                                ? "red"
+                                : quote.bookingStatus === "Booked"
+                                  ? "green"
+                                  : quote.bookingStatus === "Not Booked" ||
+                                      quote.bookingStatus === "NotBooked"
+                                    ? "blue"
+                                    : "#111", // default
+                          }}
+                        >
+                          {quote.bookingStatus}
+                        </td>
+
                         <td>
                           <Button
                             variant="link"
@@ -129,11 +197,11 @@ const QuotationPage = () => {
               </Table>
             </div>
             {/* {totalPages > 1 && ( */}
-              <DynamicPagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-              />
+            <DynamicPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
             {/* )} */}
           </Card>
         </Container>

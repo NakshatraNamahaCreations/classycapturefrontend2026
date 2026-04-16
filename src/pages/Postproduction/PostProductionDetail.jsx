@@ -140,19 +140,40 @@ const PostProductionDetail = () => {
     const quotationId = data?.quotationId;
     if (!quotationId) return alert("Quotation identifier not available.");
 
-    if (!window.confirm("Mark this booking as Completed?")) return;
+    if (
+      !window.confirm(
+        "Mark this booking as Completed? This will finalize deliverables.",
+      )
+    ) {
+      return;
+    }
 
     try {
       setMarking(true);
+
+      // 1) mark booking as completed
       const res = await axios.put(
         `${API_URL}/quotations/${quotationId}/booking-status`,
         { status: "Completed" },
       );
-      if (res.data?.success) {
-        setQuotation((q) => ({ ...q, bookingStatus: "Completed" }));
-        alert("Booking marked as completed successfully!");
-      } else {
+
+      if (!res.data?.success) {
         alert(res.data?.message || "Failed to update booking status.");
+        return;
+      }
+
+      // update UI status immediately
+      setQuotation((q) => ({ ...(q || {}), bookingStatus: "Completed" }));
+
+      // 2) finalize deliverables (ONLY NOW)
+      const d = await finalizeDeliverables(quotationId);
+
+      if (d) {
+        alert("Booking marked completed & deliverables finalized!");
+      } else {
+        alert(
+          "Booking marked completed, but deliverables could not be finalized.",
+        );
       }
     } catch (e) {
       console.error(e);
@@ -718,18 +739,58 @@ const PostProductionDetail = () => {
       <Card className="shadow-sm mb-4 border-0">
         <Card.Header className="fw-bold bg-dark text-white d-flex justify-content-between align-items-center">
           <span>Collected Data Details</span>
-          <Badge
-            bg={
-              quotation?.bookingStatus === "Completed"
-                ? "success"
-                : quotation?.bookingStatus === "Booked"
-                  ? "primary"
-                  : "warning"
-            }
-            className="px-3 py-2"
-          >
-            Status: {quotation?.bookingStatus || "—"}
-          </Badge>
+
+          <div className="d-flex align-items-center gap-2">
+            <div className="d-flex align-items-center gap-2">
+              {/* ✅ View Deliverables button */}
+              {data?.quotationId && (
+                <Button
+                  variant="outline-light"
+                  size="sm"
+                  onClick={() => navigate(`/deliverables/${data.quotationId}`)}
+                  style={{ fontSize: 12, padding: "6px 10px" }}
+                >
+                  View Deliverables
+                </Button>
+              )}
+
+              {/* ✅ Mark Completed Button */}
+              {quotation?.bookingStatus !== "Completed" && (
+                <Button
+                  variant="success"
+                  size="sm"
+                  disabled={marking}
+                  onClick={handleMarkCompleted}
+                  style={{ fontSize: 12, padding: "6px 10px" }}
+                >
+                  {marking ? (
+                    <>
+                      <Spinner size="sm" animation="border" className="me-2" />
+                      Marking...
+                    </>
+                  ) : (
+                    <>
+                      <FaCheckCircle className="me-2" />
+                      Mark Booking Completed
+                    </>
+                  )}
+                </Button>
+              )}
+
+              <Badge
+                bg={
+                  quotation?.bookingStatus === "Completed"
+                    ? "success"
+                    : quotation?.bookingStatus === "Booked"
+                      ? "primary"
+                      : "warning"
+                }
+                className="px-3 py-2"
+              >
+                Status: {quotation?.bookingStatus || "—"}
+              </Badge>
+            </div>
+          </div>
         </Card.Header>
 
         <Card.Body>
@@ -854,6 +915,8 @@ const PostProductionDetail = () => {
         </Card>
       ) : null}
 
+      {console.log("quotation albums", quotation?.albums)}
+
       {/* Albums (only if present in quotation) */}
       {quotation?.albums?.length ? (
         <Card className="shadow-sm mb-4">
@@ -871,9 +934,9 @@ const PostProductionDetail = () => {
                   <th>#</th>
                   <th>Template</th>
                   <th>Box</th>
-                  <th>Qty</th>
+
                   <th>Album Unit Price</th>
-                  <th>Box / Unit</th>
+                  <th>Box Charge</th>
                   <th>Extras</th>
                 </tr>
               </thead>
@@ -943,10 +1006,10 @@ const PostProductionDetail = () => {
                       <td>
                         {alb?.snapshot?.boxLabel || alb?.boxTypeId || "-"}
                       </td>
-                      <td className="text-center">{alb?.qty ?? 1}</td>
+                      {/* <td className="text-center">{alb?.qty ?? 1}</td> */}
                       <td className="text-end">{fmt(alb?.unitPrice)}</td>
                       <td className="text-end">
-                        {fmt(alb?.suggested?.boxPerUnit)}
+                        {fmt(alb?.suggested?.boxSurcharge)}
                       </td>
                       <td style={{ width: "30%" }}>{extrasCell}</td>
                     </tr>
@@ -1478,8 +1541,8 @@ const PostProductionDetail = () => {
                   padding: "6px 10px",
                 }),
 
-                    menuPortal: (base) => ({ ...base, zIndex: 999999 }), // ✅ IMPORTANT
-    menu: (base) => ({ ...base, zIndex: 999999 }),       // ✅ IMPORTANT
+                menuPortal: (base) => ({ ...base, zIndex: 999999 }), // ✅ IMPORTANT
+                menu: (base) => ({ ...base, zIndex: 999999 }), // ✅ IMPORTANT
               }}
               menuPortalTarget={document.body}
               menuPosition="fixed"
@@ -1550,8 +1613,8 @@ const PostProductionDetail = () => {
                   fontSize: 12,
                   padding: "6px 10px",
                 }),
-                    menuPortal: (base) => ({ ...base, zIndex: 999999 }), // ✅ IMPORTANT
-    menu: (base) => ({ ...base, zIndex: 999999 }),       // ✅ IMPORTANT
+                menuPortal: (base) => ({ ...base, zIndex: 999999 }), // ✅ IMPORTANT
+                menu: (base) => ({ ...base, zIndex: 999999 }), // ✅ IMPORTANT
               }}
               menuPortalTarget={document.body}
               menuPosition="fixed"
