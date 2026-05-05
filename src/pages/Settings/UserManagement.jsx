@@ -59,6 +59,21 @@ const UserManagement = () => {
 
     const handleShow = () => setShowModal(true);
 
+    const handleEdit = (user) => {
+        setFormData({
+            id: user._id,
+            name: user.name || '',
+            email: user.email || '',
+            username: user.username || '',
+            phonenumber: user.phonenumber || '',
+            password: '',
+            role: user.role || 'user',
+            status: user.status || 'active',
+        });
+        setError('');
+        setShowModal(true);
+    };
+
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({
@@ -71,24 +86,30 @@ const UserManagement = () => {
         e.preventDefault();
         setLoading(true);
         try {
-          const url = `${API_URL}/admin/register`; // ✅ corrected path
-          const method = "POST";
-      
+          const isEdit = !!formData.id;
+          const url = isEdit
+            ? `${API_URL}/admin/${formData.id}`
+            : `${API_URL}/admin/register`;
+          const method = isEdit ? "PUT" : "POST";
+
           const body = { ...formData };
-          delete body.id; // always remove id since we're only creating
-          // password is required, so no need to handle empty password
-      
+          delete body.id;
+          ['name', 'email', 'username', 'phonenumber'].forEach((k) => {
+            if (typeof body[k] === 'string') body[k] = body[k].trim();
+          });
+          if (isEdit && !body.password) delete body.password; // keep existing password if blank
+
           const response = await fetch(url, {
             method,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
-      
+
           if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.message || "Failed to save user");
           }
-      
+
           await fetchUsers();
           handleClose();
         } catch (err) {
@@ -173,14 +194,14 @@ const UserManagement = () => {
                                     {user.status === 'active' ? 'Active' : 'Inactive'}
                                 </td>
                                 <td className="text-center">
-                                    {/* <Button
+                                    <Button
                                         variant="link"
                                         className="text-primary p-0 me-2"
                                         onClick={() => handleEdit(user)}
                                         disabled={loading}
                                     >
                                         <img src={editIcon} alt="editIcon" style={{ width: "20px" }} />
-                                    </Button> */}
+                                    </Button>
                                     <Button
                                         variant="link"
                                         className="text-danger p-0 me-2"
@@ -210,6 +231,7 @@ const UserManagement = () => {
                     <Modal.Title>{formData.id ? 'Edit User' : 'Add New User'}</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
+                    {error && <Alert variant="danger">{error}</Alert>}
                     <Form onSubmit={handleSubmit}>
                         <div className="row">
                             <div className="col-md-6 mb-3">
@@ -281,6 +303,7 @@ const UserManagement = () => {
                                         onChange={handleInputChange}
                                         required={!formData.id}
                                         disabled={loading}
+                                        placeholder={formData.id ? 'Leave blank to keep current password' : ''}
                                     />
                                 </Form.Group>
                             </div>
